@@ -1,15 +1,32 @@
-name: Build GKI S24 Ultra Spoof 6.6.98
+name: Kernel Build S24U Professional
+permissions:
+  contents: write
+  actions: write 
+
 on:
   workflow_dispatch:
+    inputs:
+      android_version:
+        description: "Android Version"
+        required: true
+        default: "android15"
+      kernel_version:
+        description: "Kernel Version"
+        required: true
+        default: "6.6"
+      os_patch_level:
+        description: "OS Patch Level (ex: 2024-11)"
+        required: true
+        default: "2024-11"
 
 jobs:
-  build:
+  build-gki:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Environment
+      - name: Setup Build Environment
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget
@@ -17,14 +34,15 @@ jobs:
           curl https://storage.googleapis.com/git-repo-downloads/repo > bin/repo
           chmod a+rx bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+          echo "REPO=$GITHUB_WORKSPACE/bin/repo" >> $GITHUB_ENV
 
       - name: Sync Kernel Source
         run: |
           mkdir kernel && cd kernel
-          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
-          repo sync -j$(nproc --all)
+          $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
+          $REPO sync -j$(nproc --all)
 
-      - name: Integrate KernelSU Next (Manual)
+      - name: Integrate KernelSU Next (Manual Clone)
         run: |
           cd kernel/common
           git clone https://github.com/rifsxd/KernelSU-Next.git
@@ -32,61 +50,65 @@ jobs:
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: Integrate SUSFS (Busca Automática)
+      - name: Integrate SUSFS & Hide Patch (Anti-404)
         run: |
           cd kernel/common
-          # Clona o repositório do TheWildJames
+          # Clona o repo do TheWildJames para garantir que os arquivos existam localmente
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           
-          # Cria as pastas de destino
           mkdir -p include/linux fs
-          
-          # Busca os arquivos e copia, não importa onde estejam na pasta clonada
+          # Busca e copia os arquivos necessários do SUSFS de forma inteligente
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
-          find GKI_KernelSU_SUSFS -name "hide.patch" -exec cp {} . \;
           
-          # Aplica o patch
-          patch -p1 < hide.patch || echo "Patch aplicado com avisos"
+          # Aplica o hide.patch que você enviou (está na raiz do repo clonado)
+          cp GKI_KernelSU_SUSFS/hide.patch .
+          patch -p1 < hide.patch || echo "Patch aplicado com avisos de offset"
 
-      - name: Configure S24 Ultra Spoof & Flags
+      - name: Configure S24 Ultra Spoof & SUSFS Flags
         run: |
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           
-          # Flags de Spoof Samsung S24 Ultra
-          echo 'CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y' >> $DEFCONFIG
-          echo 'CONFIG_KSU_SUSFS_ENABLE_SPOOF_SAMSUNG=y' >> $DEFCONFIG
+          echo "# KernelSU & SUSFS Flags" >> $DEFCONFIG
+          echo "CONFIG_KSU=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
+          echo "CONFIG_SUSFS=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
+          
+          # --- SPOOF SAMSUNG S24 ULTRA (SM-S928B) ---
+          echo "CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_SUSFS_ENABLE_SPOOF_SAMSUNG=y" >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_PRODUCT="e3q"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_MANUFACTURER="samsung"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_BOARD="e3q"' >> $DEFCONFIG
           
-          # Flags KSU Next e SUSFS
-          echo "CONFIG_KSU=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
-          echo "CONFIG_SUSFS=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
+          # Invisibilidade Máxima
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> $DEFCONFIG
 
-      - name: Build Kernel (Force 6.6.98)
+      - name: Force Kernel Version 6.6.98
+        run: |
+          cd kernel/common
+          sed -i 's/^VERSION =.*/VERSION = 6/' Makefile
+          sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' Makefile
+          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' Makefile
+          echo "Version forced to 6.6.98"
+
+      - name: Build Kernel (Bazel)
         run: |
           cd kernel
-          # Força a versão 6.6.98 no Makefile
-          sed -i 's/^VERSION =.*/VERSION = 6/' common/Makefile
-          sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' common/Makefile
-          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' common/Makefile
-          
+          # Remove trava de modificação do defconfig
           sed -i 's/check_defconfig//' common/build.config.gki
           tools/bazel build --config=fast //common:kernel_aarch64_dist
 
-      - name: Upload Artifacts
+      - name: Upload Image Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image-S24U-Spoof-6.6.98
+          name: Image-GKI-S24U-6.6.98
           path: kernel/out/android15-6.6/dist/Image

@@ -1,4 +1,4 @@
-name: Kernel Build S24U Professional
+name: Build GKI Professional S24U Spoof
 permissions:
   contents: write
   actions: write 
@@ -20,95 +20,78 @@ on:
         default: "2024-11"
 
 jobs:
-  build-gki:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Build Environment
+      - name: Setup Environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget
+          sudo apt-get update && sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget
           mkdir -p bin
           curl https://storage.googleapis.com/git-repo-downloads/repo > bin/repo
           chmod a+rx bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
-          echo "REPO=$GITHUB_WORKSPACE/bin/repo" >> $GITHUB_ENV
 
       - name: Sync Kernel Source
         run: |
           mkdir kernel && cd kernel
-          $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
-          $REPO sync -j$(nproc --all)
+          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
+          repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Integrate KernelSU Next (Manual Clone)
+      - name: Integrate KernelSU Next (Correção app_profile.h)
         run: |
           cd kernel/common
-          git clone https://github.com/rifsxd/KernelSU-Next.git
-          cp -r KernelSU-Next/kernel drivers/kernelsu
-          echo "obj-y += kernelsu/" >> drivers/Makefile
-          echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+          # Em vez de copiar pastas, usamos o instalador oficial que resolve dependências de UAPI
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main-next
 
-      - name: Integrate SUSFS & Hide Patch (Anti-404)
+      - name: Integrate SUSFS & Hide Patch (Busca Inteligente)
         run: |
           cd kernel/common
-          # Clona o repo do TheWildJames para garantir que os arquivos existam localmente
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           
-          mkdir -p include/linux fs
-          # Busca e copia os arquivos necessários do SUSFS de forma inteligente
+          # Localiza os arquivos independente da pasta (resolve o erro da sua print #5)
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
           
-          # Aplica o hide.patch que você enviou (está na raiz do repo clonado)
-          cp GKI_KernelSU_SUSFS/hide.patch .
-          patch -p1 < hide.patch || echo "Patch aplicado com avisos de offset"
+          # Aplica o patch de ocultação
+          if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
+            cp GKI_KernelSU_SUSFS/hide.patch .
+            patch -p1 < hide.patch || echo "Patch aplicado."
+          fi
 
-      - name: Configure S24 Ultra Spoof & SUSFS Flags
+      - name: Configure S24 Ultra Spoof (SM-S928B)
         run: |
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           
-          echo "# KernelSU & SUSFS Flags" >> $DEFCONFIG
-          echo "CONFIG_KSU=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
-          echo "CONFIG_SUSFS=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
-          
-          # --- SPOOF SAMSUNG S24 ULTRA (SM-S928B) ---
-          echo "CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_ENABLE_SPOOF_SAMSUNG=y" >> $DEFCONFIG
-          echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"' >> $DEFCONFIG
-          echo 'CONFIG_KSU_SUSFS_SPOOF_PRODUCT="e3q"' >> $DEFCONFIG
-          echo 'CONFIG_KSU_SUSFS_SPOOF_MANUFACTURER="samsung"' >> $DEFCONFIG
-          echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"' >> $DEFCONFIG
-          echo 'CONFIG_KSU_SUSFS_SPOOF_BOARD="e3q"' >> $DEFCONFIG
-          
-          # Invisibilidade Máxima
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> $DEFCONFIG
+          # Flags de Identidade Samsung
+          {
+            echo "CONFIG_KSU=y"
+            echo "CONFIG_KSU_NEXT=y"
+            echo "CONFIG_SUSFS=y"
+            echo "CONFIG_KSU_SUSFS=y"
+            echo "CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y"
+            echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"'
+            echo 'CONFIG_KSU_SUSFS_SPOOF_PRODUCT="e3q"'
+            echo 'CONFIG_KSU_SUSFS_SPOOF_MANUFACTURER="samsung"'
+            echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"'
+          } >> $DEFCONFIG
 
-      - name: Force Kernel Version 6.6.98
+      - name: Build Kernel (Forçando 6.6.98)
         run: |
           cd kernel/common
           sed -i 's/^VERSION =.*/VERSION = 6/' Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' Makefile
-          echo "Version forced to 6.6.98"
-
-      - name: Build Kernel (Bazel)
-        run: |
-          cd kernel
-          # Remove trava de modificação do defconfig
+          
+          cd ..
           sed -i 's/check_defconfig//' common/build.config.gki
           tools/bazel build --config=fast //common:kernel_aarch64_dist
 
-      - name: Upload Image Artifact
+      - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
-          name: Image-GKI-S24U-6.6.98
-          path: kernel/out/android15-6.6/dist/Image
+          name: Kernel-Motorola-as-S24U
+          path: kernel/bazel-bin/common/kernel_aarch64/Image

@@ -6,30 +6,32 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Your Repo
         uses: actions/checkout@v4
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3
 
       - name: Clone Builder Tools
         run: |
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git builder
 
-      - name: Execution Step
-        run: |
-          cd builder
-          # O script real do WildJames costuma ficar aqui ou ter este nome:
-          chmod +x .github/scripts/build-kernel.sh || chmod +x build.sh
-          
-          # Tentando executar o script do caminho oficial do repo dele
-          bash .github/scripts/build-kernel.sh \
-            --kernel_source https://android.googlesource.com/kernel/common \
-            --kernel_branch android15-6.6 \
-            --clang_version r522138b \
-            --extra_build_commands "CONFIG_LOCALVERSION=-Samsung-S24-Ultra" \
-            --enable_kernelsu_next true \
-            --enable_susfs true \
-            --disable_werror true
+      - name: Run WildJames Builder
+        # Aqui está o segredo: apontando para a pasta que acabamos de clonar
+        uses: ./builder/.github/actions/build-kernel
+        with:
+          kernel_source: https://android.googlesource.com/kernel/common
+          kernel_branch: android15-6.6
+          kernel_config: gki_defconfig
+          arch: arm64
+          clang_version: r522138b
+          extra_build_commands: CONFIG_LOCALVERSION=-Samsung-S24-Ultra
+          enable_kernelsu: true
+          kernelsu_variant: next
+          enable_susfs: true
+          susfs_version: v2.1.0
+          disable_werror: true
+          make_anykernel3: true
+
+      - name: Upload Kernel Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-S24U-Next-SUSFS
+          path: out/*

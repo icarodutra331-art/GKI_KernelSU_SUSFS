@@ -6,32 +6,54 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Your Repo
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Clone Builder Tools
         run: |
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git builder
 
-      - name: Run WildJames Builder
-        # Aqui está o segredo: apontando para a pasta que acabamos de clonar
-        uses: ./builder/.github/actions/build-kernel
-        with:
-          kernel_source: https://android.googlesource.com/kernel/common
-          kernel_branch: android15-6.6
-          kernel_config: gki_defconfig
-          arch: arm64
-          clang_version: r522138b
-          extra_build_commands: CONFIG_LOCALVERSION=-Samsung-S24-Ultra
-          enable_kernelsu: true
-          kernelsu_variant: next
-          enable_susfs: true
-          susfs_version: v2.1.0
-          disable_werror: true
-          make_anykernel3: true
+      - name: Execution Step
+        run: |
+          cd builder
+          
+          # Dynamic script search
+          REAL_SCRIPT=$(find . -name "build-kernel.sh" | head -n 1)
+          
+          if [ -z "$REAL_SCRIPT" ]; then
+            echo "Error: Script not found!"
+            exit 1
+          fi
+          
+          chmod +x "$REAL_SCRIPT"
+          
+          # 🔥 Injetando a configuração do S24 Ultra via Environment Variables
+          export INPUT_KERNEL_SOURCE="https://android.googlesource.com/kernel/common"
+          export INPUT_KERNEL_BRANCH="android15-6.6"
+          export INPUT_KERNEL_CONFIG="gki_defconfig"
+          export INPUT_ARCH="arm64"
+          export INPUT_CLANG_VERSION="r522138b"
+          export INPUT_EXTRA_BUILD_COMMANDS="CONFIG_LOCALVERSION=-Samsung-S24-Ultra"
+          export INPUT_ENABLE_KERNELSU="true"
+          export INPUT_KERNELSU_VARIANT="next"
+          export INPUT_ENABLE_SUSFS="true"
+          export INPUT_SUSFS_VERSION="v2.1.0"
+          export INPUT_DISABLE_WERROR="true"
+          export INPUT_MAKE_ANYKERNEL3="true"
+          
+          # Alguns builders exigem o workspace definido
+          export GITHUB_WORKSPACE=$(pwd)
+
+          echo "Starting the engine with simulated inputs..."
+          bash "$REAL_SCRIPT"
 
       - name: Upload Kernel Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-S24U-Next-SUSFS
-          path: out/*
+          path: |
+            builder/out/*
+            builder/dist/*
+            builder/AnyKernel3/*.zip
+            builder/**/*.img

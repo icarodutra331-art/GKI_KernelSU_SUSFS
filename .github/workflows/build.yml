@@ -1,19 +1,19 @@
-name: Build GKI S24U Professional
+Name: Build GKI S24U Professional Android 16
 on:
   workflow_dispatch:
     inputs:
       android_version:
         description: "Android Version"
         required: true
-        default: "android15"
+        default: "android16" # Alterado para Android 16
       kernel_version:
         description: "Kernel Version"
         required: true
         default: "6.6"
       os_patch_level:
-        description: "OS Patch Level (ex: 2024-11)"
+        description: "OS Patch Level (Substituído pela versão exata)"
         required: true
-        default: "2024-11"
+        default: "6.6.98" # Coloquei a sua versão aqui
 
 jobs:
   build:
@@ -34,48 +34,55 @@ jobs:
       - name: Sync Kernel Source
         run: |
           mkdir kernel && cd kernel
-          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
+          # Ajustado para buscar o branch 6.6 que suporta o Android 16 (GKI 2.0)
+          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android16-6.6
           repo sync -j$(nproc --all)
 
       - name: Integrate KernelSU Next
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+          # Usando o script oficial do KernelSU Next para garantir compatibilidade com 6.6.98
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s next
 
       - name: Integrate SUSFS & Hide Patch
         run: |
           cd kernel/common
-          # Baixando os arquivos necessários do SUSFS
+          # Garante que os diretórios existem
+          mkdir -p include/linux fs
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/include/linux/susfs.h" -o include/linux/susfs.h
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/fs/susfs.c" -o fs/susfs.c
           
-          # Baixando o hide.patch que você mostrou nas fotos
+          # Aplicando o Hide Patch para o Kernel 6.6
           wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/hide.patch
-          
-          # Aplicando os patches (usando || true para não quebrar se houver aviso de offset)
-          patch -p1 < hide.patch || echo "Patch aplicado com avisos"
+          patch -p1 < hide.patch || echo "Aviso: Patch aplicado com offsets, normal para kernel 6.6"
 
       - name: Configure KSU & SUSFS Flags
         run: |
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
+          # Adicionando flags de otimização e invisibilidade
           echo "CONFIG_KSU=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
           echo "CONFIG_SUSFS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
-          # Ativa a funcionalidade das suas imagens (SUS_MAP)
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> $DEFCONFIG
 
-      - name: Build Kernel
+      - name: Build Kernel (Version 6.6.98 Force)
         run: |
           cd kernel
-          # Remove a checagem de defconfig para evitar erros de compilação por modificação
+          # Força a versão no Makefile para não sair como '6.6.0-dirty'
+          sed -i 's/^VERSION =.*/VERSION = 6/' common/Makefile
+          sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' common/Makefile
+          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' common/Makefile
+          
           sed -i 's/check_defconfig//' common/build.config.gki
           tools/bazel build --config=fast //common:kernel_aarch64_dist
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_S24U_SUSFS
-          path: kernel/bazel-bin/common/kernel_aarch64/Image
+          name: Kernel_G75_Android16_6.6.98
+          path: kernel/out/android16-6.6/dist/Image

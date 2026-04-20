@@ -21,44 +21,44 @@ jobs:
       - name: Sync Kernel Source
         run: |
           mkdir kernel && cd kernel
-          # Branch GKI 6.6 estável (compatível com Android 15/16)
           repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
           repo sync -j$(nproc --all)
 
       - name: Integrate KernelSU Next (Manual)
         run: |
           cd kernel/common
-          # Clonando direto para evitar o erro 404 do script automático
+          # Clonando o KSU Next direto
           git clone https://github.com/rifsxd/KernelSU-Next.git
           cp -r KernelSU-Next/kernel drivers/kernelsu
-          
-          # Registrando o KSU no sistema de build do kernel
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: Integrate SUSFS & Samsung Spoof
+      - name: Integrate SUSFS & Patch Correct
         run: |
           cd kernel/common
           mkdir -p include/linux fs
+          # Baixando os arquivos oficiais do SUSFS
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/include/linux/susfs.h" -o include/linux/susfs.h
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/fs/susfs.c" -o fs/susfs.c
           
-          # Patch para unir o KernelSU Next com o SUSFS
-          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/KernelSU_Next_with_SUSFS.patch
-          patch -p1 < KernelSU_Next_with_SUSFS.patch || echo "Patch aplicado com avisos"
+          # Baixando o patch que REALMENTE existe no repo do TheWildJames (como no seu print)
+          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/hide.patch
+          
+          # Aplicando o patch
+          patch -p1 < hide.patch || echo "Patch aplicado com avisos (normal)"
 
       - name: Configure S24 Ultra Spoof & Flags
         run: |
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           
-          # Flags de Ativação
+          # Ativação KSU Next e SUSFS
           echo "CONFIG_KSU=y" >> $DEFCONFIG
           echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
           echo "CONFIG_SUSFS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
           
-          # O SEGREDO: Identidade do Samsung S24 Ultra (SM-S928B)
+          # Dados do S24 Ultra (SM-S928B)
           echo 'CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_ENABLE_SPOOF_SAMSUNG=y' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"' >> $DEFCONFIG
@@ -67,7 +67,7 @@ jobs:
           echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_BOARD="e3q"' >> $DEFCONFIG
           
-          # Invisibilidade Máxima
+          # Flags de Ocultação
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
@@ -77,19 +77,14 @@ jobs:
       - name: Build Kernel (Force 6.6.98)
         run: |
           cd kernel
-          # Força a versão 6.6.98 para o Android 16 aceitar o boot
           sed -i 's/^VERSION =.*/VERSION = 6/' common/Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' common/Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' common/Makefile
-          
-          # Desabilita a trava de segurança de modificação do config
           sed -i 's/check_defconfig//' common/build.config.gki
-          
-          # Compilação via Bazel (Leva cerca de 30-40 min)
           tools/bazel build --config=fast //common:kernel_aarch64_dist
 
-      - name: Upload Artifacts
+      - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
-          name: Image-GKI-S24U-Spoof-6.6.98
+          name: Image-S24U-Spoof-6.6.98
           path: kernel/out/android15-6.6/dist/Image

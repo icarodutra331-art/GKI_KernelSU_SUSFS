@@ -1,4 +1,4 @@
-naname: Build Kernel S24U
+name: Build Kernel S24U
 on:
   workflow_dispatch:
 

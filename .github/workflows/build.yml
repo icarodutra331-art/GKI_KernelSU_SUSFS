@@ -32,22 +32,22 @@ jobs:
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: Integrate SUSFS (Método por Clone - Sem 404)
+      - name: Integrate SUSFS (Busca Automática)
         run: |
           cd kernel/common
-          # Clonando o repo do TheWildJames para pegar os arquivos locais
+          # Clona o repositório do TheWildJames
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           
-          # Criando as pastas necessárias
+          # Cria as pastas de destino
           mkdir -p include/linux fs
           
-          # Copiando os arquivos do SUSFS de dentro do repo clonado (ajustado para a estrutura do print)
-          cp GKI_KernelSU_SUSFS/susfs4ksu/include/linux/susfs.h include/linux/
-          cp GKI_KernelSU_SUSFS/susfs4ksu/fs/susfs.c fs/
+          # Busca os arquivos e copia, não importa onde estejam na pasta clonada
+          find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
+          find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
+          find GKI_KernelSU_SUSFS -name "hide.patch" -exec cp {} . \;
           
-          # Aplicando o hide.patch que está na raiz do repo dele
-          cp GKI_KernelSU_SUSFS/hide.patch .
-          patch -p1 < hide.patch || echo "Aviso: Patch aplicado com offsets"
+          # Aplica o patch
+          patch -p1 < hide.patch || echo "Patch aplicado com avisos"
 
       - name: Configure S24 Ultra Spoof & Flags
         run: |
@@ -63,7 +63,7 @@ jobs:
           echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_BOARD="e3q"' >> $DEFCONFIG
           
-          # Flags KSU Next e SUSFS Ocultação
+          # Flags KSU Next e SUSFS
           echo "CONFIG_KSU=y" >> $DEFCONFIG
           echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
           echo "CONFIG_SUSFS=y" >> $DEFCONFIG
@@ -72,11 +72,12 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> $DEFCONFIG
 
       - name: Build Kernel (Force 6.6.98)
         run: |
           cd kernel
-          # Cravando a versão 6.6.98 no Makefile
+          # Força a versão 6.6.98 no Makefile
           sed -i 's/^VERSION =.*/VERSION = 6/' common/Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' common/Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' common/Makefile

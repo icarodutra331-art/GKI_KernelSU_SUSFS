@@ -27,38 +27,35 @@ jobs:
       - name: Integrate KernelSU Next (Manual)
         run: |
           cd kernel/common
-          # Clonando o KSU Next direto
           git clone https://github.com/rifsxd/KernelSU-Next.git
           cp -r KernelSU-Next/kernel drivers/kernelsu
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: Integrate SUSFS & Patch Correct
+      - name: Integrate SUSFS (Lógica do download.sh)
         run: |
           cd kernel/common
+          # 1. Puxa os arquivos do SUSFS direto do repo do TheWildJames (como ele faz no script)
           mkdir -p include/linux fs
-          # Baixando os arquivos oficiais do SUSFS
-          curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/include/linux/susfs.h" -o include/linux/susfs.h
-          curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/fs/susfs.c" -o fs/susfs.c
+          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/susfs4ksu/include/linux/susfs.h -O include/linux/susfs.h
+          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/susfs4ksu/fs/susfs.c -O fs/susfs.c
           
-          # Baixando o patch que REALMENTE existe no repo do TheWildJames (como no seu print)
+          # 2. Puxa e aplica o hide.patch que está na raiz
           wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/hide.patch
-          
-          # Aplicando o patch
-          patch -p1 < hide.patch || echo "Patch aplicado com avisos (normal)"
+          patch -p1 < hide.patch || echo "Aviso: Patch aplicado com offsets"
 
       - name: Configure S24 Ultra Spoof & Flags
         run: |
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           
-          # Ativação KSU Next e SUSFS
+          # Flags KSU e SUSFS
           echo "CONFIG_KSU=y" >> $DEFCONFIG
           echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
           echo "CONFIG_SUSFS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
           
-          # Dados do S24 Ultra (SM-S928B)
+          # Injeção Direta S24 Ultra (Spoof)
           echo 'CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_ENABLE_SPOOF_SAMSUNG=y' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"' >> $DEFCONFIG
@@ -67,12 +64,11 @@ jobs:
           echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_BOARD="e3q"' >> $DEFCONFIG
           
-          # Flags de Ocultação
+          # Ocultação
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> $DEFCONFIG
 
       - name: Build Kernel (Force 6.6.98)
         run: |

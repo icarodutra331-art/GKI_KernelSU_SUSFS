@@ -1,59 +1,42 @@
-name: Build GKI S24U Final
-on:
-  workflow_dispatch:
+- name: Execution Step
+      run: |
+        # 1. Identify the cloned directory name
+        ls -d */
+        
+        # 2. Search for the build script using absolute path
+        REAL_SCRIPT=$(find $(pwd) -name "build-kernel.sh" | head -n 1)
+        
+        if [ -z "$REAL_SCRIPT" ]; then
+          echo "❌ Error: build-kernel.sh not found!"
+          echo "Listing available files for debugging:"
+          find . -maxdepth 3 -not -path '*/.*'
+          exit 1
+        fi
+        
+        echo "✅ Script found at: $REAL_SCRIPT"
+        chmod +x "$REAL_SCRIPT"
+        
+        # 3. Set the builder root directory
+        # This ensures the script runs from the correct base folder
+        BUILDER_ROOT=$(dirname $(dirname $(dirname "$REAL_SCRIPT")))
+        cd "$BUILDER_ROOT"
+        
+        # 🔥 Mandatory Environment Variables (GitHub Action Emulation)
+        export INPUT_KERNEL_SOURCE="https://android.googlesource.com/kernel/common"
+        export INPUT_KERNEL_BRANCH="android15-6.6"
+        export INPUT_KERNEL_CONFIG="gki_defconfig"
+        export INPUT_ARCH="arm64"
+        export INPUT_CLANG_VERSION="r522138b"
+        export INPUT_EXTRA_BUILD_COMMANDS="CONFIG_LOCALVERSION=-Samsung-S24-Ultra"
+        export INPUT_ENABLE_KERNELSU="true"
+        export INPUT_KERNELSU_VARIANT="next"
+        export INPUT_ENABLE_SUSFS="true"
+        export INPUT_SUSFS_VERSION="v2.1.0"
+        export INPUT_DISABLE_WERROR="true"
+        export INPUT_MAKE_ANYKERNEL3="true"
+        
+        # Required Workspace Variable
+        export GITHUB_WORKSPACE=$(pwd)
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Clone Builder Tools
-        run: |
-          git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git builder
-
-      - name: Execution Step
-        run: |
-          cd builder
-          
-          # Dynamic script search
-          REAL_SCRIPT=$(find . -name "build-kernel.sh" | head -n 1)
-          
-          if [ -z "$REAL_SCRIPT" ]; then
-            echo "Error: Script not found!"
-            exit 1
-          fi
-          
-          chmod +x "$REAL_SCRIPT"
-          
-          # 🔥 Injetando a configuração do S24 Ultra via Environment Variables
-          export INPUT_KERNEL_SOURCE="https://android.googlesource.com/kernel/common"
-          export INPUT_KERNEL_BRANCH="android15-6.6"
-          export INPUT_KERNEL_CONFIG="gki_defconfig"
-          export INPUT_ARCH="arm64"
-          export INPUT_CLANG_VERSION="r522138b"
-          export INPUT_EXTRA_BUILD_COMMANDS="CONFIG_LOCALVERSION=-Samsung-S24-Ultra"
-          export INPUT_ENABLE_KERNELSU="true"
-          export INPUT_KERNELSU_VARIANT="next"
-          export INPUT_ENABLE_SUSFS="true"
-          export INPUT_SUSFS_VERSION="v2.1.0"
-          export INPUT_DISABLE_WERROR="true"
-          export INPUT_MAKE_ANYKERNEL3="true"
-          
-          # Alguns builders exigem o workspace definido
-          export GITHUB_WORKSPACE=$(pwd)
-
-          echo "Starting the engine with simulated inputs..."
-          bash "$REAL_SCRIPT"
-
-      - name: Upload Kernel Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-S24U-Next-SUSFS
-          path: |
-            builder/out/*
-            builder/dist/*
-            builder/AnyKernel3/*.zip
-            builder/**/*.img
+        echo "🚀 Starting build process..."
+        bash "$REAL_SCRIPT"

@@ -1,4 +1,4 @@
-name: Build GKI S24U Next
+name: Build GKI S24U
 on:
   workflow_dispatch:
 
@@ -10,22 +10,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Kernel
-        uses: TheWildJames/GKI_KernelSU_SUSFS@main
+        uses: ./.github/actions/build-kernel # Usa a ação local do próprio repo
         with:
           kernel_source: https://android.googlesource.com/kernel/common
           kernel_branch: android15-6.6
           kernel_config: gki_defconfig
           arch: arm64
           clang_version: r522138b
-          # Aqui é onde a mágica do nome acontece
           extra_build_commands: CONFIG_LOCALVERSION=-Samsung-S24-Ultra
-          
-          # Ativando as ferramentas que você quer
           enable_kernelsu: true
           kernelsu_variant: next
-          
           enable_susfs: true
           susfs_version: v2.1.0
-          
-          # Isso ajuda a evitar erros de compilação por avisos bobos
-          disable_werror: true

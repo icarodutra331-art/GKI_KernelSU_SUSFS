@@ -6,27 +6,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do Código
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compilar com WildJames Action
-        # Usamos a versão completa do link para o GitHub não se perder
+      - name: Compilar Kernel
         uses: TheWildJames/GKI_KernelSU_SUSFS@main
         with:
           kernel_source: https://android.googlesource.com/kernel/common
+          # Usando a versão que o seu arquivo JSON confirmou que existe
           kernel_branch: android15-6.6
           kernel_config: gki_defconfig
           arch: arm64
           clang_version: r522138b
           
-          # Nome personalizado para o seu S24 Ultra
+          # Personalização do nome
           extra_build_commands: CONFIG_LOCALVERSION=-Samsung-S24-Ultra
           
-          # Root e Ocultação (KernelSU-Next + SUSFS)
+          # Ativando o combo Next + SUSFS
           enable_kernelsu: true
           kernelsu_variant: next
           enable_susfs: true
           susfs_version: v2.1.0
           
-          # Evita que o processo pare por avisos bobos de código
+          # Desativar erros chatos do Android 15
           disable_werror: true
+          make_anykernel3: true

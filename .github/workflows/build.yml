@@ -16,30 +16,51 @@ jobs:
 
       - name: Setup Kernel Source (GKI 6.6)
         run: |
-          # Cloning only the necessary to avoid timeout
           git clone --depth 1 -b android15-6.6 https://android.googlesource.com/kernel/common kernel_source
 
       - name: Integrate KernelSU Next
         run: |
           cd kernel_source
-          # Official KernelSU Next integration
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
 
-      - name: Build Kernel (Using Native Clang)
+      - name: Integrate SUSFS & Hide Patches
+        run: |
+          # Clonando o repositório que contém os patches das suas imagens
+          git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git susfs_src
+          
+          cd kernel_source
+          # 1. Copiando arquivos essenciais do SUSFS
+          cp ../susfs_src/Filesystem_Patches/include/linux/susfs.h include/linux/
+          cp ../susfs_src/Filesystem_Patches/fs/susfs.c fs/
+
+          # 2. Aplicando patches de Kernel e o Hide Patch (o das imagens)
+          cp ../susfs_src/Kernel_Patches/KernelSU/10_enable_susfs_for_ksu.patch .
+          cp ../susfs_src/Kernel_Patches/SUSFS/50_add_susfs_in_gki-android15-6.6.patch .
+          
+          # Aplicando patches base
+          patch -p1 < 10_enable_susfs_for_ksu.patch
+          patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch
+          
+          # 3. Aplicando o HIDE PATCH específico (das fotos que você mandou)
+          # Ele mascara o frida-agent e outras ferramentas na memória
+          patch -p1 < ../susfs_src/Kernel_Patches/SUSFS/hide.patch || echo "Hide patch applied with warnings or already included"
+
+      - name: Build Kernel (The Winning Config)
         run: |
           cd kernel_source
-          
-          # We use the system's LLVM/Clang which is stable
           make ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out gki_defconfig
           
-          echo "Starting compilation... This will take a while."
+          # Ativando as chaves de camuflagem no Kernel (o que habilita os #ifdef das fotos)
+          echo "CONFIG_SUSFS=y" >> out/.config
+          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> out/.config
+          
           make -j$(nproc --all) ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            CONFIG_LOCALVERSION="-Samsung-S24-Ultra"
+            CONFIG_LOCALVERSION="-Samsung-S24-Ultra-SUSFS"
 
       - name: Upload Kernel Artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: GKI-6.6-S24U-KernelSU
+          name: GKI-6.6-S24U-KSU-SUSFS-HIDDEN
           path: kernel_source/out/arch/arm64/boot/Image

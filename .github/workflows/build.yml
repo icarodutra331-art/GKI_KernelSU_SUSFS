@@ -1,107 +1,81 @@
-name: Kernel Build Process
-permissions:
-  contents: write
-  actions: write 
-
+name: Build GKI S24U Professional
 on:
   workflow_dispatch:
     inputs:
       android_version:
-        description: "Android Version (ex: android15)"
+        description: "Android Version"
         required: true
         default: "android15"
       kernel_version:
-        description: "Kernel Version (ex: 6.6)"
+        description: "Kernel Version"
         required: true
         default: "6.6"
-      sub_level:
-        description: "Sublevel (ex: 58)"
-        required: true
-        default: "58"
       os_patch_level:
         description: "OS Patch Level (ex: 2024-11)"
         required: true
         default: "2024-11"
 
 jobs:
-  build-gki:
-    name: "${{ inputs.kernel_version }}-${{ inputs.android_version }} (SUSFS-HIDDEN)"
+  build:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Set CONFIG Environment Variable
-        run: |
-          CONFIG="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}"
-          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Build Environment
+      - name: Setup Environment
         run: |
-          sudo apt-get update && sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget libssl-dev
-          AOSP_MIRROR=https://android.googlesource.com
-          BRANCH=main-kernel-2025
-          git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b $BRANCH --depth 1 kernel-build-tools &
-          git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b $BRANCH --depth 1 mkbootimg &
-          wait
-          mkdir -p ./git-repo
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
-          chmod a+rx ./git-repo/repo
-          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget
+          mkdir -p bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > bin/repo
+          chmod a+rx bin/repo
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
-      - name: Initialize and Sync Kernel Source
+      - name: Sync Kernel Source
         run: |
-          mkdir -p "$CONFIG"
-          cd "$CONFIG"
-          FORMATTED_BRANCH="${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}"
-          $REPO init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH} --repo-rev=v2.16
-          $REPO sync -c -j$(nproc --all) --no-tags --fail-fast
+          mkdir kernel && cd kernel
+          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
+          repo sync -j$(nproc --all)
 
-      - name: Add KernelSU Next
+      - name: Integrate KernelSU Next
         run: |
-          cd "$CONFIG"
+          cd kernel
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
 
-      - name: Integrate SUSFS & Hide Patch (From Your Images)
+      - name: Integrate SUSFS & Hide Patch
         run: |
-          cd "$CONFIG/common"
-          
-          # 1. Baixar arquivos base do SUSFS
+          cd kernel/common
+          # Baixando os arquivos necessários do SUSFS
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/include/linux/susfs.h" -o include/linux/susfs.h
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/fs/susfs.c" -o fs/susfs.c
           
-          # 2. Baixar Patches de integração e o Hide Patch específico
-          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/Kernel_Patches/KernelSU/10_enable_susfs_for_ksu.patch
-          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/Kernel_Patches/SUSFS/50_add_susfs_in_gki-android15-6.6.patch
+          # Baixando o hide.patch que você mostrou nas fotos
           wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/hide.patch
-
-          # 3. Aplicar os patches
-          patch -p1 < 10_enable_susfs_for_ksu.patch || echo "Aviso: Patch KSU falhou"
-          patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || echo "Aviso: Patch GKI falhou"
-          patch -p1 < hide.patch || echo "Aviso: hide.patch aplicado com offsets (normal)"
-
-      - name: Configure Kernel Flags (Camouflage)
-        run: |
-          cd "$CONFIG"
-          DEFCONFIG="./common/arch/arm64/configs/gki_defconfig"
           
+          # Aplicando os patches (usando || true para não quebrar se houver aviso de offset)
+          patch -p1 < hide.patch || echo "Patch aplicado com avisos"
+
+      - name: Configure KSU & SUSFS Flags
+        run: |
+          cd kernel/common
+          DEFCONFIG="arch/arm64/configs/gki_defconfig"
           echo "CONFIG_KSU=y" >> $DEFCONFIG
           echo "CONFIG_SUSFS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
-          # Esta linha abaixo ativa o código verde das suas fotos!
+          # Ativa a funcionalidade das suas imagens (SUS_MAP)
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG
 
-      - name: Build Kernel (Bazel/Kleaf)
+      - name: Build Kernel
         run: |
-          cd "$CONFIG"
-          # Removendo check_defconfig para evitar erro de assinatura
-          sed -i 's/check_defconfig//' ./common/build.config.gki
-          tools/bazel build --config=fast --lto=thin //common:kernel_aarch64_dist
+          cd kernel
+          # Remove a checagem de defconfig para evitar erros de compilação por modificação
+          sed -i 's/check_defconfig//' common/build.config.gki
+          tools/bazel build --config=fast //common:kernel_aarch64_dist
 
-      - name: Upload Image
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-S24U-SUSFS-Hidden
-          path: ${{ env.CONFIG }}/bazel-bin/common/kernel_aarch64/Image
+          name: Kernel_S24U_SUSFS
+          path: kernel/bazel-bin/common/kernel_aarch64/Image

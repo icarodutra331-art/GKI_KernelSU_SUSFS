@@ -25,32 +25,35 @@ jobs:
 
       - name: Integrate SUSFS & Hide Patches
         run: |
-          # Clonando o repositório que contém os patches das suas imagens
+          # 1. Clonar repositório de ferramentas (WildJames)
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git susfs_src
           
-          cd kernel_source
-          # 1. Copiando arquivos essenciais do SUSFS
-          cp ../susfs_src/Filesystem_Patches/include/linux/susfs.h include/linux/
-          cp ../susfs_src/Filesystem_Patches/fs/susfs.c fs/
+          # 2. Localizar arquivos essenciais dinamicamente
+          SUSFS_H=$(find susfs_src -name "susfs.h")
+          SUSFS_C=$(find susfs_src -name "susfs.c")
+          HIDE_PATCH=$(find susfs_src -name "hide.patch")
+          KSU_PATCH=$(find susfs_src -name "10_enable_susfs_for_ksu.patch")
+          GKI_PATCH=$(find susfs_src -name "50_add_susfs_in_gki-android15-6.6.patch")
 
-          # 2. Aplicando patches de Kernel e o Hide Patch (o das imagens)
-          cp ../susfs_src/Kernel_Patches/KernelSU/10_enable_susfs_for_ksu.patch .
-          cp ../susfs_src/Kernel_Patches/SUSFS/50_add_susfs_in_gki-android15-6.6.patch .
-          
-          # Aplicando patches base
+          # 3. Copiar arquivos para o kernel_source
+          cp "$SUSFS_H" kernel_source/include/linux/
+          cp "$SUSFS_C" kernel_source/fs/
+          cp "$HIDE_PATCH" kernel_source/
+          cp "$KSU_PATCH" kernel_source/
+          cp "$GKI_PATCH" kernel_source/
+
+          # 4. Aplicar os patches
+          cd kernel_source
           patch -p1 < 10_enable_susfs_for_ksu.patch
           patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch
-          
-          # 3. Aplicando o HIDE PATCH específico (das fotos que você mandou)
-          # Ele mascara o frida-agent e outras ferramentas na memória
-          patch -p1 < ../susfs_src/Kernel_Patches/SUSFS/hide.patch || echo "Hide patch applied with warnings or already included"
+          patch -p1 < hide.patch || echo "Hide patch applied with warnings"
 
-      - name: Build Kernel (The Winning Config)
+      - name: Build Kernel (The Success Config)
         run: |
           cd kernel_source
           make ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out gki_defconfig
           
-          # Ativando as chaves de camuflagem no Kernel (o que habilita os #ifdef das fotos)
+          # Ativando as flags de camuflagem das suas fotos
           echo "CONFIG_SUSFS=y" >> out/.config
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> out/.config
           

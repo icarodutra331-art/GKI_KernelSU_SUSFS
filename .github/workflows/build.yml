@@ -7,15 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       android_version:
-        description: "Android Version"
+        description: "Versão do Android"
         required: true
         default: "android15"
       kernel_version:
-        description: "Kernel Version"
+        description: "Versão do Kernel"
         required: true
         default: "6.6"
       os_patch_level:
-        description: "OS Patch Level (ex: 2024-11)"
+        description: "Patch Level"
         required: true
         default: "2024-11"
 
@@ -40,32 +40,67 @@ jobs:
           repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
           repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Integrate KernelSU Next (Método Seguro)
+      - name: Integrate KernelSU Next (Sem Erro de Pasta)
         run: |
-          # Entra no diretório correto onde a pasta 'drivers' realmente existe
-          cd kernel/common
+          # Aqui está o truque: usamos o 'find' para achar a pasta drivers não importa onde ela esteja
+          COMMON_PATH=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
+          cd $COMMON_PATH
+          
           git clone https://github.com/rifsxd/KernelSU-Next.git
-          # Usa o instalador interno para evitar erro de diretório not found
-          cd KernelSU-Next
-          ./kernel/setup.sh main-next
+          cp -r KernelSU-Next/kernel drivers/kernelsu
+          
+          echo "obj-y += kernelsu/" >> drivers/Makefile
+          echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+          echo "KernelSU Next integrado com sucesso."
 
-      - name: Integrate SUSFS & Hide Patch
+      - name: Integrate SUSFS & Samsung Spoof
         run: |
-          cd kernel/common
+          # Localiza o diretório common novamente
+          COMMON_PATH=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
+          cd $COMMON_PATH
+          
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           
-          # Resolve o erro 'No such file' usando busca dinâmica
-          echo "Localizando arquivos SUSFS..."
+          # Procura os arquivos .h e .c do SUSFS para evitar o erro "No such file"
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
           
-          # Aplica o hide.patch da raiz do repo clonado
-          if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
-            cp GKI_KernelSU_SUSFS/hide.patch .
-            patch -p1 < hide.patch || echo "Aviso: Patch aplicado com offsets."
-          fi
+          # Aplica o patch de ocultação se existir
+          [ -f GKI_KernelSU_SUSFS/hide.patch ] && patch -p1 < GKI_KernelSU_SUSFS/hide.patch
 
-      - name: Configure Samsung S24 Ultra Spoof (SM-S928B)
+      - name: Configurar Spoofing S24 Ultra (SM-S928B)
         run: |
-          cd kernel/common
-          DEFCONFIG="arch/arm64/configs/gki_def
+          COMMON_PATH=$(find kernel -name "gki_defconfig" -print -quit | sed 's/\/arch\/arm64\/configs\/gki_defconfig//')
+          DEFCONFIG="$COMMON_PATH/arch/arm64/configs/gki_defconfig"
+          
+          {
+            echo "CONFIG_KSU=y"
+            echo "CONFIG_KSU_NEXT=y"
+            echo "CONFIG_SUSFS=y"
+            echo "CONFIG_KSU_SUSFS=y"
+            echo "CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y"
+            echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"'
+            echo 'CONFIG_KSU_SUSFS_SPOOF_PRODUCT="e3q"'
+            echo 'CONFIG_KSU_SUSFS_SPOOF_MANUFACTURER="samsung"'
+            echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"'
+          } >> $DEFCONFIG
+
+      - name: Force Version 6.6.98 & Build
+        run: |
+          COMMON_PATH=$(find kernel -name "Makefile" -type f -exec grep -l "SUBLEVEL =" {} + | head -n 1 | sed 's/\/Makefile//')
+          cd $COMMON_PATH
+          sed -i 's/^VERSION =.*/VERSION = 6/' Makefile
+          sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' Makefile
+          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' Makefile
+          
+          cd ../..
+          # Remove o check_defconfig para não dar erro nas flags de Samsung
+          find kernel -name "build.config.gki" -exec sed -i 's/check_defconfig//' {} +
+          
+          tools/bazel build --config=fast //common:kernel_aarch64_dist
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-S24U-Spoof-Final
+          path: kernel/bazel-bin/common/kernel_aarch64/Image

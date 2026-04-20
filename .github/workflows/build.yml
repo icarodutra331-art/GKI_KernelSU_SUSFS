@@ -1,19 +1,6 @@
-name: Build GKI S24U Professional Android 16
+name: Build GKI S24 Ultra Spoof 6.6.98
 on:
   workflow_dispatch:
-    inputs:
-      android_version:
-        description: "Android Version"
-        required: true
-        default: "android16" # Alterado para Android 16
-      kernel_version:
-        description: "Kernel Version"
-        required: true
-        default: "6.6"
-      os_patch_level:
-        description: "OS Patch Level (Substituído pela versão exata)"
-        required: true
-        default: "6.6.98" # Coloquei a sua versão aqui
 
 jobs:
   build:
@@ -34,46 +21,55 @@ jobs:
       - name: Sync Kernel Source
         run: |
           mkdir kernel && cd kernel
-          # Ajustado para buscar o branch 6.6 que suporta o Android 16 (GKI 2.0)
-          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android16-6.6
+          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
           repo sync -j$(nproc --all)
 
       - name: Integrate KernelSU Next
         run: |
           cd kernel
-          # Usando o script oficial do KernelSU Next para garantir compatibilidade com 6.6.98
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s next
 
-      - name: Integrate SUSFS & Hide Patch
+      - name: Integrate SUSFS & Samsung Spoof
         run: |
           cd kernel/common
-          # Garante que os diretórios existem
           mkdir -p include/linux fs
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/include/linux/susfs.h" -o include/linux/susfs.h
           curl -LSs "https://raw.githubusercontent.com/namelessghost/susfs4ksu/main/fs/susfs.c" -o fs/susfs.c
           
-          # Aplicando o Hide Patch para o Kernel 6.6
-          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/hide.patch
-          patch -p1 < hide.patch || echo "Aviso: Patch aplicado com offsets, normal para kernel 6.6"
+          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/KernelSU_Next_with_SUSFS.patch
+          patch -p1 < KernelSU_Next_with_SUSFS.patch || echo "Patch aplicado"
 
-      - name: Configure KSU & SUSFS Flags
+      - name: Configure S24 Ultra Spoof & Flags
         run: |
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
-          # Adicionando flags de otimização e invisibilidade
+          
+          # Ativação do Spoofing Samsung no Kernel
+          echo "CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_SUSFS_ENABLE_SPOOF_SAMSUNG=y" >> $DEFCONFIG
+          
+          # Injeção dos dados do S24 Ultra (SM-S928B)
+          echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"' >> $DEFCONFIG
+          echo 'CONFIG_KSU_SUSFS_SPOOF_PRODUCT="e3q"' >> $DEFCONFIG
+          echo 'CONFIG_KSU_SUSFS_SPOOF_MANUFACTURER="samsung"' >> $DEFCONFIG
+          echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"' >> $DEFCONFIG
+          echo 'CONFIG_KSU_SUSFS_SPOOF_BOARD="e3q"' >> $DEFCONFIG
+          
+          # Flags de Invisibilidade e KernelSU Next
           echo "CONFIG_KSU=y" >> $DEFCONFIG
           echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
           echo "CONFIG_SUSFS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> $DEFCONFIG
 
-      - name: Build Kernel (Version 6.6.98 Force)
+      - name: Build Kernel (Force 6.6.98)
         run: |
           cd kernel
-          # Força a versão no Makefile para não sair como '6.6.0-dirty'
+          # Força a exibição da versão 6.6.98 no sistema
           sed -i 's/^VERSION =.*/VERSION = 6/' common/Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' common/Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' common/Makefile
@@ -84,5 +80,5 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_G75_Android16_6.6.98
-          path: kernel/out/android16-6.6/dist/Image
+          name: Image-GKI-S24U-Spoof-6.6.98
+          path: kernel/out/android15-6.6/dist/Image

@@ -32,16 +32,21 @@ jobs:
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: Integrate SUSFS (Lógica do download.sh)
+      - name: Integrate SUSFS (Método por Clone - Sem 404)
         run: |
           cd kernel/common
-          # 1. Puxa os arquivos do SUSFS direto do repo do TheWildJames (como ele faz no script)
-          mkdir -p include/linux fs
-          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/susfs4ksu/include/linux/susfs.h -O include/linux/susfs.h
-          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/susfs4ksu/fs/susfs.c -O fs/susfs.c
+          # Clonando o repo do TheWildJames para pegar os arquivos locais
+          git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           
-          # 2. Puxa e aplica o hide.patch que está na raiz
-          wget https://raw.githubusercontent.com/TheWildJames/GKI_KernelSU_SUSFS/main/hide.patch
+          # Criando as pastas necessárias
+          mkdir -p include/linux fs
+          
+          # Copiando os arquivos do SUSFS de dentro do repo clonado (ajustado para a estrutura do print)
+          cp GKI_KernelSU_SUSFS/susfs4ksu/include/linux/susfs.h include/linux/
+          cp GKI_KernelSU_SUSFS/susfs4ksu/fs/susfs.c fs/
+          
+          # Aplicando o hide.patch que está na raiz do repo dele
+          cp GKI_KernelSU_SUSFS/hide.patch .
           patch -p1 < hide.patch || echo "Aviso: Patch aplicado com offsets"
 
       - name: Configure S24 Ultra Spoof & Flags
@@ -49,13 +54,7 @@ jobs:
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           
-          # Flags KSU e SUSFS
-          echo "CONFIG_KSU=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
-          echo "CONFIG_SUSFS=y" >> $DEFCONFIG
-          echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
-          
-          # Injeção Direta S24 Ultra (Spoof)
+          # Flags de Spoof Samsung S24 Ultra
           echo 'CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_ENABLE_SPOOF_SAMSUNG=y' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"' >> $DEFCONFIG
@@ -64,7 +63,11 @@ jobs:
           echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"' >> $DEFCONFIG
           echo 'CONFIG_KSU_SUSFS_SPOOF_BOARD="e3q"' >> $DEFCONFIG
           
-          # Ocultação
+          # Flags KSU Next e SUSFS Ocultação
+          echo "CONFIG_KSU=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_NEXT=y" >> $DEFCONFIG
+          echo "CONFIG_SUSFS=y" >> $DEFCONFIG
+          echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEFCONFIG
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG
@@ -73,13 +76,15 @@ jobs:
       - name: Build Kernel (Force 6.6.98)
         run: |
           cd kernel
+          # Cravando a versão 6.6.98 no Makefile
           sed -i 's/^VERSION =.*/VERSION = 6/' common/Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' common/Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' common/Makefile
+          
           sed -i 's/check_defconfig//' common/build.config.gki
           tools/bazel build --config=fast //common:kernel_aarch64_dist
 
-      - name: Upload Image
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Image-S24U-Spoof-6.6.98

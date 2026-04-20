@@ -6,11 +6,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout do Código
         uses: actions/checkout@v4
 
-      - name: Build Kernel
-        # Chamando a action direto da fonte para evitar erro de 'action.yml'
+      - name: Compilar com WildJames Action
+        # Usamos a versão completa do link para o GitHub não se perder
         uses: TheWildJames/GKI_KernelSU_SUSFS@main
         with:
           kernel_source: https://android.googlesource.com/kernel/common
@@ -19,14 +19,14 @@ jobs:
           arch: arm64
           clang_version: r522138b
           
-          # Personalização do seu S24 Ultra
+          # Nome personalizado para o seu S24 Ultra
           extra_build_commands: CONFIG_LOCALVERSION=-Samsung-S24-Ultra
           
-          # Configurações de Root e Ocultação
+          # Root e Ocultação (KernelSU-Next + SUSFS)
           enable_kernelsu: true
           kernelsu_variant: next
           enable_susfs: true
           susfs_version: v2.1.0
           
-          # Garante que o build não pare por avisos bobos
+          # Evita que o processo pare por avisos bobos de código
           disable_werror: true

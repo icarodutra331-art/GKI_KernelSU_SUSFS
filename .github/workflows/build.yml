@@ -40,33 +40,33 @@ jobs:
           repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
           repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Integrate KernelSU Next
+      - name: Integrate KernelSU Next (Seguro)
         run: |
-          COMMON_PATH=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
-          cd $COMMON_PATH
+          # Localiza a pasta common dinamicamente para evitar erro de diretório
+          COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
+          cd $COMMON_DIR
           git clone https://github.com/rifsxd/KernelSU-Next.git
           cp -r KernelSU-Next/kernel drivers/kernelsu
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: Integrate SUSFS & Samsung Spoof (Correção do Patch)
+      - name: Integrate SUSFS & Samsung Spoof
         run: |
-          COMMON_PATH=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
-          cd $COMMON_PATH
+          COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
+          cd $COMMON_DIR
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           
-          # Copia arquivos essenciais
+          # Copia arquivos e resolve erro de 'No such file'
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
           
-          # Tenta aplicar o patch de forma forçada, mas não interrompe se falhar
+          # Aplica patch de ocultação sem travar o build
           if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
-            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Aviso: Patch ignorado para evitar erro de compilação."
+            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Aviso: Patch ignorado."
           fi
 
-      - name: Configurar Identidade Samsung S24 Ultra
+      - name: Configurar Identidade S24 Ultra (SM-S928B)
         run: |
-          # Procura o defconfig dinamicamente
           DEFCONFIG=$(find kernel -name "gki_defconfig" -print -quit)
           {
             echo "CONFIG_KSU=y"
@@ -80,20 +80,22 @@ jobs:
             echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"'
           } >> $DEFCONFIG
 
-      - name: Build Kernel (Forçar 6.6.98)
+      - name: Build Kernel (Fix Bazel & Version 6.6.98)
         run: |
+          # Força a versão no Makefile
           MAKEFILE=$(find kernel -name "Makefile" -type f -exec grep -l "SUBLEVEL =" {} + | head -n 1)
           sed -i 's/^VERSION =.*/VERSION = 6/' $MAKEFILE
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' $MAKEFILE
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' $MAKEFILE
           
-          # Remove trava de segurança do build
+          # Remove travas de config
           find kernel -name "build.config.gki" -exec sed -i 's/check_defconfig//' {} +
           
-          tools/bazel build --config=fast //common:kernel_aarch64_dist
+          # Executa Bazel na raiz para evitar erro de 'No such file'
+          ./kernel/tools/bazel build --config=fast //common:kernel_aarch64_dist
 
-      - name: Upload Image
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image-S24U-Spoof-Final
+          name: Kernel-S24U-Spoof
           path: kernel/bazel-bin/common/kernel_aarch64/Image

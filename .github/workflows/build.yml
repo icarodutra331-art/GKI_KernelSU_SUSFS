@@ -1,4 +1,4 @@
-name: Build GKI S24U Final
+name: Build GKI S24U Professional
 on:
   workflow_dispatch:
 
@@ -6,51 +6,46 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Clone Tools
-        run: git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git builder
-
-      - name: Build Kernel
+      - name: Install Build Tools
         run: |
-          cd builder
-          
-          # Find the exact script path regardless of hidden folders
-          SCRIPT_PATH=$(find . -name "build-kernel.sh" | head -n 1)
-          
-          if [ -z "$SCRIPT_PATH" ]; then
-            echo "ERROR: build-kernel.sh not found!"
-            find . -maxdepth 4 -name "*.sh"
-            exit 1
-          fi
-          
-          chmod +x "$SCRIPT_PATH"
-          
-          # Setup Environment Variables
-          export INPUT_KERNEL_SOURCE="https://android.googlesource.com/kernel/common"
-          export INPUT_KERNEL_BRANCH="android15-6.6"
-          export INPUT_KERNEL_CONFIG="gki_defconfig"
-          export INPUT_ARCH="arm64"
-          export INPUT_CLANG_VERSION="r522138b"
-          export INPUT_EXTRA_BUILD_COMMANDS="CONFIG_LOCALVERSION=-Samsung-S24-Ultra"
-          export INPUT_ENABLE_KERNELSU="true"
-          export INPUT_KERNELSU_VARIANT="next"
-          export INPUT_ENABLE_SUSFS="true"
-          export INPUT_SUSFS_VERSION="v2.1.0"
-          export INPUT_DISABLE_WERROR="true"
-          export INPUT_MAKE_ANYKERNEL3="true"
-          export GITHUB_WORKSPACE=$(pwd)
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget
 
-          echo "Running script from: $SCRIPT_PATH"
-          bash "$SCRIPT_PATH"
+      - name: Download Toolchain (Clang)
+        run: |
+          mkdir -p clang
+          cd clang
+          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r522138b.tar.gz
+          tar -xf clang-r522138b.tar.gz
 
-      - name: Upload Artifacts
-        if: always()
+      - name: Setup Kernel Source
+        run: |
+          # Downloading only the necessary branch to save time/space
+          git clone --depth 1 -b android15-6.6 https://android.googlesource.com/kernel/common kernel_source
+
+      - name: Integrate KernelSU Next
+        run: |
+          cd kernel_source
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+
+      - name: Final Build Execution
+        run: |
+          export PATH=$(pwd)/clang/bin:$PATH
+          cd kernel_source
+          
+          make ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out gki_defconfig
+          
+          # This is the actual compilation. It will take time.
+          make -j$(nproc --all) ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
+            CONFIG_LOCALVERSION="-Samsung-S24-Ultra"
+
+      - name: Upload Finished Kernel
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-S24U-Next-SUSFS
-          path: |
-            builder/out/*
-            builder/**/*.img
-            builder/*.zip
+          name: GKI-S24U-KernelSU
+          path: kernel_source/out/arch/arm64/boot/Image

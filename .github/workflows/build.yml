@@ -6,46 +6,40 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Build Tools
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget
+          sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3 curl wget libssl-dev
 
-      - name: Download Toolchain (Clang)
+      - name: Setup Kernel Source (GKI 6.6)
         run: |
-          mkdir -p clang
-          cd clang
-          wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r522138b.tar.gz
-          tar -xf clang-r522138b.tar.gz
-
-      - name: Setup Kernel Source
-        run: |
-          # Downloading only the necessary branch to save time/space
+          # Cloning only the necessary to avoid timeout
           git clone --depth 1 -b android15-6.6 https://android.googlesource.com/kernel/common kernel_source
 
       - name: Integrate KernelSU Next
         run: |
           cd kernel_source
+          # Official KernelSU Next integration
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
 
-      - name: Final Build Execution
+      - name: Build Kernel (Using Native Clang)
         run: |
-          export PATH=$(pwd)/clang/bin:$PATH
           cd kernel_source
           
+          # We use the system's LLVM/Clang which is stable
           make ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out gki_defconfig
           
-          # This is the actual compilation. It will take time.
+          echo "Starting compilation... This will take a while."
           make -j$(nproc --all) ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out \
             CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
             CONFIG_LOCALVERSION="-Samsung-S24-Ultra"
 
-      - name: Upload Finished Kernel
+      - name: Upload Kernel Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: GKI-S24U-KernelSU
+          name: GKI-6.6-S24U-KernelSU
           path: kernel_source/out/arch/arm64/boot/Image

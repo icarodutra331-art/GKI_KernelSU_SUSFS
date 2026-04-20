@@ -40,9 +40,9 @@ jobs:
           repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
           repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Integrate KernelSU Next (Seguro)
+      - name: Integrate KernelSU Next
         run: |
-          # Localiza a pasta common dinamicamente para evitar erro de diretório
+          # Busca dinâmica para evitar erro de diretório inexistente
           COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
           cd $COMMON_DIR
           git clone https://github.com/rifsxd/KernelSU-Next.git
@@ -55,12 +55,8 @@ jobs:
           COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
           cd $COMMON_DIR
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
-          
-          # Copia arquivos e resolve erro de 'No such file'
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
-          
-          # Aplica patch de ocultação sem travar o build
           if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
             patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Aviso: Patch ignorado."
           fi
@@ -80,19 +76,19 @@ jobs:
             echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"'
           } >> $DEFCONFIG
 
-      - name: Build Kernel (Fix Bazel & Version 6.6.98)
+      - name: Build Kernel (Fix Bazel Root)
         run: |
-          # Força a versão no Makefile
+          # Corrige a versão para 6.6.98
           MAKEFILE=$(find kernel -name "Makefile" -type f -exec grep -l "SUBLEVEL =" {} + | head -n 1)
           sed -i 's/^VERSION =.*/VERSION = 6/' $MAKEFILE
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' $MAKEFILE
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' $MAKEFILE
           
-          # Remove travas de config
           find kernel -name "build.config.gki" -exec sed -i 's/check_defconfig//' {} +
           
-          # Executa Bazel na raiz para evitar erro de 'No such file'
-          ./kernel/tools/bazel build --config=fast //common:kernel_aarch64_dist
+          # ENTRA NA PASTA KERNEL ANTES DE RODAR O BAZEL (Corrige o erro da foto)
+          cd kernel
+          ./tools/bazel build --config=fast //common:kernel_aarch64_dist
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

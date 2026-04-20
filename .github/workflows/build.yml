@@ -1,4 +1,4 @@
-name: Build Kernel S24U
+name: Build GKI S24U Final
 on:
   workflow_dispatch:
 
@@ -10,24 +10,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Kernel
-        # IMPORTANTE: Aqui chamamos o criador oficial para não dar erro de arquivo faltando no seu fork
-        uses: TheWildJames/GKI_KernelSU_SUSFS@main
+        # Usamos o caminho relativo para a action que já está dentro do seu fork
+        uses: ./.github/actions/build-kernel
         with:
           kernel_source: https://android.googlesource.com/kernel/common
           kernel_branch: android15-6.6
           kernel_config: gki_defconfig
           arch: arm64
           clang_version: r522138b
-          
-          # Personalização do seu S24 Ultra
           extra_build_commands: CONFIG_LOCALVERSION=-Samsung-S24-Ultra
-          
-          # Configurações de Root e Ocultação
           enable_kernelsu: true
           kernelsu_variant: next
           enable_susfs: true
           susfs_version: v2.1.0
-          
-          # Ignora erros chatos de cabeçalho do Kernel 6.6
           disable_werror: true
-          make_anykernel3: true

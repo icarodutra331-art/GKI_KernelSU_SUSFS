@@ -6,21 +6,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Build Kernel
-        # Usamos o caminho relativo para a action que já está dentro do seu fork
-        uses: ./.github/actions/build-kernel
-        with:
-          kernel_source: https://android.googlesource.com/kernel/common
-          kernel_branch: android15-6.6
-          kernel_config: gki_defconfig
-          arch: arm64
-          clang_version: r522138b
-          extra_build_commands: CONFIG_LOCALVERSION=-Samsung-S24-Ultra
-          enable_kernelsu: true
-          kernelsu_variant: next
-          enable_susfs: true
-          susfs_version: v2.1.0
-          disable_werror: true
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential flex bison lld llvm clang git python3
+
+      - name: Clone Builder Tools
+        run: |
+          git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git builder
+
+      - name: Debug Structure
+        run: |
+          cd builder
+          ls -R
+
+      - name: Execution Step
+        run: |
+          cd builder
+          chmod +x *.sh
+          # Usando o script principal do repo clonado
+          ./build_kernel.sh \
+            --kernel_source https://android.googlesource.com/kernel/common \
+            --kernel_branch android15-6.6 \
+            --clang_version r522138b \
+            --extra_build_commands "CONFIG_LOCALVERSION=-Samsung-S24-Ultra" \
+            --enable_kernelsu_next true \
+            --enable_susfs true \
+            --disable_werror true

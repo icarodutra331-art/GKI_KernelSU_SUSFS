@@ -18,17 +18,14 @@ jobs:
         run: |
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git builder
 
-      - name: Debug Structure
-        run: |
-          cd builder
-          ls -R
-
       - name: Execution Step
         run: |
           cd builder
-          chmod +x *.sh
-          # Usando o script principal do repo clonado
-          ./build_kernel.sh \
+          # O script real do WildJames costuma ficar aqui ou ter este nome:
+          chmod +x .github/scripts/build-kernel.sh || chmod +x build.sh
+          
+          # Tentando executar o script do caminho oficial do repo dele
+          bash .github/scripts/build-kernel.sh \
             --kernel_source https://android.googlesource.com/kernel/common \
             --kernel_branch android15-6.6 \
             --clang_version r522138b \

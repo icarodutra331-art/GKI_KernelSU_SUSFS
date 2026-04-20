@@ -1,4 +1,4 @@
-Name: Build GKI S24U Professional Android 16
+name: Build GKI S24U Professional Android 16
 on:
   workflow_dispatch:
     inputs:

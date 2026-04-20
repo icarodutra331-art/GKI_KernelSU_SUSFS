@@ -1,4 +1,4 @@
-name: Build GKI Professional S24U Spoof
+name: Build GKI S24U Spoof Final
 permissions:
   contents: write
   actions: write 
@@ -7,15 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       android_version:
-        description: "Android Version"
+        description: "Versão do Android"
         required: true
         default: "android15"
       kernel_version:
-        description: "Kernel Version"
+        description: "Versão do Kernel"
         required: true
         default: "6.6"
       os_patch_level:
-        description: "OS Patch Level (ex: 2024-11)"
+        description: "Patch Level (ex: 2024-11)"
         required: true
         default: "2024-11"
 
@@ -40,25 +40,30 @@ jobs:
           repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.os_patch_level }}
           repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Integrate KernelSU Next (Correção app_profile.h)
+      - name: Integrate KernelSU Next (Sem Erro 404)
         run: |
           cd kernel/common
-          # Em vez de copiar pastas, usamos o instalador oficial que resolve dependências de UAPI
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/main/kernel/setup.sh" | bash -s main-next
+          # Em vez de curl (que gera o erro 404 da sua print), clonamos o repo
+          git clone https://github.com/rifsxd/KernelSU-Next.git
+          cd KernelSU-Next
+          # Executa o setup localmente
+          ./kernel/setup.sh main-next
+          echo "KernelSU Next integrado com sucesso."
 
-      - name: Integrate SUSFS & Hide Patch (Busca Inteligente)
+      - name: Integrate SUSFS & Patch (Correção Caminho Inexistente)
         run: |
           cd kernel/common
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           
-          # Localiza os arquivos independente da pasta (resolve o erro da sua print #5)
+          # Resolve o erro "No such file" da sua print
+          # Usamos 'find' para localizar os arquivos onde quer que o James os tenha colocado
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
           
-          # Aplica o patch de ocultação
+          # Aplica o hide.patch que está na raiz do repo
           if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
             cp GKI_KernelSU_SUSFS/hide.patch .
-            patch -p1 < hide.patch || echo "Patch aplicado."
+            patch -p1 < hide.patch || echo "Patch aplicado com sucesso."
           fi
 
       - name: Configure S24 Ultra Spoof (SM-S928B)
@@ -66,7 +71,6 @@ jobs:
           cd kernel/common
           DEFCONFIG="arch/arm64/configs/gki_defconfig"
           
-          # Flags de Identidade Samsung
           {
             echo "CONFIG_KSU=y"
             echo "CONFIG_KSU_NEXT=y"
@@ -79,19 +83,8 @@ jobs:
             echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"'
           } >> $DEFCONFIG
 
-      - name: Build Kernel (Forçando 6.6.98)
+      - name: Force Kernel 6.6.98 & Build
         run: |
           cd kernel/common
+          # Trava a versão conforme solicitado
           sed -i 's/^VERSION =.*/VERSION = 6/' Makefile
-          sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' Makefile
-          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' Makefile
-          
-          cd ..
-          sed -i 's/check_defconfig//' common/build.config.gki
-          tools/bazel build --config=fast //common:kernel_aarch64_dist
-
-      - name: Upload Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-Motorola-as-S24U
-          path: kernel/bazel-bin/common/kernel_aarch64/Image

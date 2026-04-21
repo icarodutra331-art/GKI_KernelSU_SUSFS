@@ -1,4 +1,4 @@
-name: Build GKI Moto A16 Turbo Final
+name: Build GKI Moto Stealth Final V4
 permissions:
   contents: write
   actions: write 
@@ -24,25 +24,23 @@ jobs:
       - name: Sync Kernel Source (Fix Manifest)
         run: |
           mkdir kernel && cd kernel
-          # Usando mainline para evitar erro de 'remote ref'
-          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b android-mainline
+          # O segredo está aqui: o branch correto agora é o 'common-mainline' ou 'main'
+          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-mainline
           repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
       - name: Integrate KernelSU Next + SUSFS
         run: |
           COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
           cd $COMMON_DIR
-          # KernelSU Next
           git clone https://github.com/rifsxd/KernelSU-Next.git
           cp -r KernelSU-Next/kernel drivers/kernelsu
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
-          # SUSFS
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
           if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
-            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Patch SUSFS aplicado."
+            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "SUSFS aplicado."
           fi
 
       - name: Configurar Defconfig (BBR + Stealth + LTO)
@@ -50,41 +48,32 @@ jobs:
           DEFCONFIG=$(find kernel -name "gki_defconfig" -print -quit)
           chmod +w $DEFCONFIG
           {
-            # Root & Camuflagem
             echo "CONFIG_KSU=y"
             echo "CONFIG_KSU_NEXT=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
-            
-            # Turbo Internet (BBR)
             echo "CONFIG_TCP_CONG_BBR=y"
             echo "CONFIG_DEFAULT_TCP_CONG=\"bbr\""
-            
-            # Anti-Detector
             echo "# CONFIG_IKCONFIG_PROC is not set"
             echo "# CONFIG_KALLSYMS_ALL is not set"
-            
-            # Otimização de Tamanho
             echo "CONFIG_LTO_CLANG_THIN=y"
           } >> $DEFCONFIG
 
       - name: Build Kernel (Moto Identity 6.6.87)
         run: |
-          # Ajuste de versão para bater com o sistema Motorola
           MAKEFILE=$(find kernel -name "Makefile" -type f -exec grep -l "SUBLEVEL =" {} + | head -n 1)
           sed -i 's/^VERSION =.*/VERSION = 6/' $MAKEFILE
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' $MAKEFILE
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 87/' $MAKEFILE
           
-          # Desativar checagem rigorosa do Bazel
           find kernel -name "build.config.gki" -exec sed -i 's/check_defconfig//' {} +
           
           cd kernel
-          # KMI_GENERATION=8 é o segredo para o Android 16 aceitar o kernel no Moto
+          # KMI_GENERATION=8 para casar com o seu sistema original
           ./tools/bazel build --config=fast --action_env=KMI_GENERATION=8 //common:kernel_aarch64_dist
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
-          name: Image-Turbo-A16-Moto
+          name: Image-Moto-Final-A16
           path: kernel/bazel-bin/common/kernel_aarch64/Image

@@ -1,4 +1,4 @@
-name: Build GKI S24U Final Corrigido
+name: Build GKI Moto Puro Final
 permissions:
   contents: write
   actions: write 
@@ -9,13 +9,13 @@ on:
       android_version:
         description: "Android Version"
         required: true
-        default: "android15"
+        default: "android15" # Mantemos android15 pois é a base GKI estável para o kernel 6.6
       kernel_version:
         description: "Kernel Version"
         required: true
         default: "6.6"
       os_patch_level:
-        description: "OS Patch Level"
+        description: "OS Patch Level (Ex: 2024-11)"
         required: true
         default: "2024-11"
 
@@ -42,7 +42,6 @@ jobs:
 
       - name: Integrate KernelSU Next
         run: |
-          # Busca dinâmica para evitar erro de diretório inexistente
           COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
           cd $COMMON_DIR
           git clone https://github.com/rifsxd/KernelSU-Next.git
@@ -50,18 +49,19 @@ jobs:
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
 
-      - name: Integrate SUSFS & Samsung Spoof
+      - name: Integrate SUSFS (Sem Spoof Samsung)
         run: |
           COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
           cd $COMMON_DIR
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
+          # Aplicamos o patch do SUSFS para esconder o root, mas sem o spoofing de modelo
           if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
-            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Aviso: Patch ignorado."
+            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Patch ignorado."
           fi
 
-      - name: Configurar Identidade S24 Ultra (SM-S928B)
+      - name: Configurar Defconfig (Puro)
         run: |
           DEFCONFIG=$(find kernel -name "gki_defconfig" -print -quit)
           {
@@ -69,29 +69,24 @@ jobs:
             echo "CONFIG_KSU_NEXT=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
-            echo "CONFIG_KSU_SUSFS_SPOOF_SAMSUNG=y"
-            echo 'CONFIG_KSU_SUSFS_SPOOF_MODEL="SM-S928B"'
-            echo 'CONFIG_KSU_SUSFS_SPOOF_PRODUCT="e3q"'
-            echo 'CONFIG_KSU_SUSFS_SPOOF_MANUFACTURER="samsung"'
-            echo 'CONFIG_KSU_SUSFS_SPOOF_DEVICE="e3q"'
+            # REMOVIDO: CONFIG_KSU_SUSFS_SPOOF_SAMSUNG
           } >> $DEFCONFIG
 
-      - name: Build Kernel (Fix Bazel Root)
+      - name: Build Kernel
         run: |
-          # Corrige a versão para 6.6.98
+          # Ajuste para a versão exata que você precisa (6.6.98 ou similar)
           MAKEFILE=$(find kernel -name "Makefile" -type f -exec grep -l "SUBLEVEL =" {} + | head -n 1)
           sed -i 's/^VERSION =.*/VERSION = 6/' $MAKEFILE
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' $MAKEFILE
-          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 98/' $MAKEFILE
+          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 87/' $MAKEFILE # Versão que vimos no seu log!
           
           find kernel -name "build.config.gki" -exec sed -i 's/check_defconfig//' {} +
           
-          # ENTRA NA PASTA KERNEL ANTES DE RODAR O BAZEL (Corrige o erro da foto)
           cd kernel
           ./tools/bazel build --config=fast //common:kernel_aarch64_dist
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-S24U-Spoof
+          name: Kernel-Moto-Puro
           path: kernel/bazel-bin/common/kernel_aarch64/Image

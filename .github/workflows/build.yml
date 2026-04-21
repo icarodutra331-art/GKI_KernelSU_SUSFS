@@ -1,4 +1,4 @@
-name: Build GKI Moto Stealth Final V4
+name: Build GKI Moto Stealth BBR Final
 permissions:
   contents: write
   actions: write 
@@ -21,11 +21,11 @@ jobs:
           chmod a+rx bin/repo
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
-      - name: Sync Kernel Source (Fix Manifest)
+      - name: Sync Kernel Source (Stable Branch)
         run: |
           mkdir kernel && cd kernel
-          # O segredo está aqui: o branch correto agora é o 'common-mainline' ou 'main'
-          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-mainline
+          # Este branch é o mais estável para Kernel 6.6 e não dá erro de manifest
+          repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
           repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
       - name: Integrate KernelSU Next + SUSFS
@@ -52,8 +52,10 @@ jobs:
             echo "CONFIG_KSU_NEXT=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
+            # --- TURBO BBR ---
             echo "CONFIG_TCP_CONG_BBR=y"
             echo "CONFIG_DEFAULT_TCP_CONG=\"bbr\""
+            # --- STEALTH ---
             echo "# CONFIG_IKCONFIG_PROC is not set"
             echo "# CONFIG_KALLSYMS_ALL is not set"
             echo "CONFIG_LTO_CLANG_THIN=y"
@@ -61,6 +63,7 @@ jobs:
 
       - name: Build Kernel (Moto Identity 6.6.87)
         run: |
+          # Travando a versão para casar com seu celular
           MAKEFILE=$(find kernel -name "Makefile" -type f -exec grep -l "SUBLEVEL =" {} + | head -n 1)
           sed -i 's/^VERSION =.*/VERSION = 6/' $MAKEFILE
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' $MAKEFILE
@@ -69,11 +72,11 @@ jobs:
           find kernel -name "build.config.gki" -exec sed -i 's/check_defconfig//' {} +
           
           cd kernel
-          # KMI_GENERATION=8 para casar com o seu sistema original
+          # KMI_GENERATION=8 é o que faz os drivers da Motorola funcionarem
           ./tools/bazel build --config=fast --action_env=KMI_GENERATION=8 //common:kernel_aarch64_dist
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
-          name: Image-Moto-Final-A16
+          name: Image-Moto-Final-Turbo
           path: kernel/bazel-bin/common/kernel_aarch64/Image

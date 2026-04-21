@@ -9,7 +9,7 @@ on:
       android_version:
         description: "Android Version"
         required: true
-        default: "android16"
+        default: "android15"
       kernel_version:
         description: "Kernel Version"
         required: true

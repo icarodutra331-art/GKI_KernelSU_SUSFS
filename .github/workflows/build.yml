@@ -1,23 +1,10 @@
-name: Build GKI Moto Stealth Final
+name: Build GKI Moto Stealth V3
 permissions:
   contents: write
   actions: write 
 
 on:
   workflow_dispatch:
-    inputs:
-      android_version:
-        description: "Android Version Base"
-        required: true
-        default: "android15"
-      kernel_version:
-        description: "Kernel Version"
-        required: true
-        default: "6.6"
-      os_patch_level:
-        description: "OS Patch Level"
-        required: true
-        default: "2026-02"
 
 jobs:
   build:
@@ -37,65 +24,55 @@ jobs:
       - name: Sync Kernel Source
         run: |
           mkdir kernel && cd kernel
-          # Usamos o branch estável para evitar erro de manifest
           repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
           repo sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Integrate KernelSU Next
+      - name: Integrate KernelSU Next + SUSFS
         run: |
           COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
           cd $COMMON_DIR
+          # KernelSU Next
           git clone https://github.com/rifsxd/KernelSU-Next.git
           cp -r KernelSU-Next/kernel drivers/kernelsu
           echo "obj-y += kernelsu/" >> drivers/Makefile
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
-
-      - name: Integrate SUSFS
-        run: |
-          COMMON_DIR=$(find kernel -name "drivers" -type d -print -quit | sed 's/\/drivers//')
-          cd $COMMON_DIR
+          # SUSFS
           git clone https://github.com/TheWildJames/GKI_KernelSU_SUSFS.git
           find GKI_KernelSU_SUSFS -name "susfs.h" -exec cp {} include/linux/ \;
           find GKI_KernelSU_SUSFS -name "susfs.c" -exec cp {} fs/ \;
           if [ -f GKI_KernelSU_SUSFS/hide.patch ]; then
-            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Patch SUSFS aplicado."
+            patch -p1 --batch --silent < GKI_KernelSU_SUSFS/hide.patch || echo "Patch aplicado."
           fi
 
-      - name: Configurar Defconfig (Stealth + BBR)
+      - name: Configurar Defconfig (Stealth Mode)
         run: |
           DEFCONFIG=$(find kernel -name "gki_defconfig" -print -quit)
           {
-            # Root e Camuflagem
             echo "CONFIG_KSU=y"
             echo "CONFIG_KSU_NEXT=y"
             echo "CONFIG_SUSFS=y"
             echo "CONFIG_KSU_SUSFS=y"
-            
-            # Internet Ultra Rápida
-            echo "CONFIG_TCP_CONG_BBR=y"
-            echo "CONFIG_DEFAULT_TCP_CONG=\"bbr\""
-            
-            # Anti-Detector (Esconde rastros de compilação)
             echo "# CONFIG_IKCONFIG_PROC is not set"
             echo "# CONFIG_KALLSYMS_ALL is not set"
           } >> $DEFCONFIG
 
-      - name: Build Kernel (Ajuste de Versão 6.6.87)
+      - name: Build Kernel (Ajuste de KMI para Android 16)
         run: |
-          # Travando a versão para casar com o seu sistema original
+          # Casando a versão exata do seu Motorola (6.6.87)
           MAKEFILE=$(find kernel -name "Makefile" -type f -exec grep -l "SUBLEVEL =" {} + | head -n 1)
           sed -i 's/^VERSION =.*/VERSION = 6/' $MAKEFILE
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 6/' $MAKEFILE
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 87/' $MAKEFILE
           
-          # Remove checagem de config para evitar erro no Bazel
+          # Removendo travas de versão do Bazel
           find kernel -name "build.config.gki" -exec sed -i 's/check_defconfig//' {} +
           
           cd kernel
-          ./tools/bazel build --config=fast --action_env=KMI_GENERATION=0 //common:kernel_aarch64_dist
+          # KMI_GENERATION=8 para bater com o "-8-" da sua versão de kernel
+          ./tools/bazel build --config=fast --action_env=KMI_GENERATION=8 //common:kernel_aarch64_dist
 
-      - name: Upload Artifact
+      - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-Moto-Stealth-Final
+          name: Image-Moto-Final
           path: kernel/bazel-bin/common/kernel_aarch64/Image

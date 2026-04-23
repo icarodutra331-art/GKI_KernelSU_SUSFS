@@ -65,4 +65,47 @@ jobs:
         # Validar KMI (Fundamental para GKI 6.6)
         make O=out ARCH=arm64 olddefconfig
 
-    - name:
+    - name: 🏗️ Compilação Segura (-j2)
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        # -j2 evita o erro de "demasiados" processos que trava a build
+        make -j2 O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1
+        
+        # Limpar binário e comprimir para os 96MB da partição
+        llvm-strip --strip-debug out/arch/arm64/boot/Image
+        xz -9 -e -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.xz
+
+    - name: 📦 AnyKernel3 (Padrão XKNXT Terminator)
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace
+        git clone https://github.com/osm0sis/AnyKernel3.git
+        cp android-kernel/out/arch/arm64/boot/Image.xz AnyKernel3/Image.xz
+        
+        # Script AnyKernel fiel às tuas prints do XKNXT
+        cat <<EOF > AnyKernel3/anykernel.sh
+        properties() { '
+        kernel.string=XENNET Kernels by Xennet The Terminator
+        do.devicecheck=0
+        do.modules=0
+        do.systemless=0
+        do.cleanup=1
+        '; }
+        block=boot;
+        is_slot_device=auto;
+        . tools/ak3-core.sh;
+        split_boot;
+        if [ -f "split_img/ramdisk.cpio" ]; then
+            unpack_ramdisk;
+            write_boot;
+        else
+            flash_boot;
+        fi
+        EOF
+        
+        cd AnyKernel3 && zip -r ../HMBIRD-V78-FINAL.zip .
+
+    - name: ✅ Upload do Artefato
+      uses: actions/upload-artifact@v4
+      with:
+        name: G75-V78-HMBIRD
+        path: HMBIRD-V78-FINAL.zip

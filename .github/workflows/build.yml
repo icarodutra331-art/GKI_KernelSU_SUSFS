@@ -1,4 +1,4 @@
-name: 🏗️ MOTO G75 - V77 HMBIRD FINAL
+name: 🏗️ MOTO G75 - V78 HMBIRD
 on:
   workflow_dispatch:
 
@@ -15,110 +15,54 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Instalar Ferramentas
+    - name: 🛠️ Instalar Dependências
       run: |
         sudo apt update && sudo apt install -y git ccache flex bison build-essential bc curl libssl-dev libelf-dev clang lld llvm xz-utils zip
         mkdir -p $GITHUB_WORKSPACE/kernel_workspace
 
-    - name: Download Fonte Kernel (Base 6.6.98)
+    - name: 📥 Download do Kernel (Base 6.6.98)
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
         git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
 
-    - name: ඞ Injetar DNA WildKernels & HMBIRD Patches
+    - name: ඞ Injetar NEXT + SUSFS (Estilo WildKernels)
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         
-        # 1. Injetar KernelSU Next Oficial
+        # 1. Injetar KernelSU Next (Branch oficial)
         curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
         
-        # 2. Clonar Patches do WildKernels (Evita o erro 404 que você teve)
+        # 2. Clonar repositório de Patches (Evita erro 404 das tuas prints)
         git clone https://github.com/WildKernels/kernel_patches.git ../patches
         
-        # 3. Aplicar Patch HMBIRD Oficial (visto na sua print 143019)
-        # Isso garante estabilidade e correções de ABI
+        # 3. Aplicar Patch HMBIRD (ABI Fix para Kernel 6.6)
         cp -v ../patches/oneplus/humbird/* . || true
         
-        # 4. Injetar SusFS (Arquivos oficiais do GitLab)
+        # 4. Injetar SusFS (Código Real do GitLab)
         mkdir -p fs include/linux
         curl -LSs "https://gitlab.com/simonpunk/susfs4kernel/-/raw/master/kernel_patches/fs/susfs.c" -o fs/susfs.c
         curl -LSs "https://gitlab.com/simonpunk/susfs4kernel/-/raw/master/kernel_patches/include/linux/susfs.h" -o include/linux/susfs.h
         
-        # Verificar integridade (Se baixar 404, a build para aqui)
-        if [ $(stat -c%s "fs/susfs.c") -lt 100 ]; then echo "Erro: SusFS corrompido!"; exit 1; fi
-
-        # 5. Ajustes de Makefile e Structs para o Next
-        sed -i '/susfs.o/d' fs/Makefile
-        echo "obj-y += susfs.o" >> fs/Makefile
+        # FIX de Structs para o Next não bugar
         sed -i 's/struct susfs_file_struct/struct susfs_file_struct_ksu/g' fs/susfs.c || true
         sed -i 's/struct susfs_file_struct/struct susfs_file_struct_ksu/g' include/linux/susfs.h || true
 
-    - name: 🔧 Configuração HMBIRD Pack (Builds Tudo)
+    - name: 🔧 Configuração DNA HMBIRD (Builds Ativas)
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         make O=out ARCH=arm64 ${{ env.KERNEL_CONFIG }}
         KCONFIG="out/.config"
         
-        # Ativando todas as suas builds solicitadas
-        scripts/config --file $KCONFIG -e KSU
-        scripts/config --file $KCONFIG -e KSU_NEXT
-        scripts/config --file $KCONFIG -e KSU_SUSFS
-        scripts/config --file $KCONFIG -e TCP_CONG_BBR
-        scripts/config --file $KCONFIG -e NETFILTER_XT_TARGET_HL
-        scripts/config --file $KCONFIG -e NETFILTER_XT_TARGET_TTL
-        scripts/config --file $KCONFIG -e IP_SET
-        scripts/config --file $KCONFIG -e IP6_NF_NAT
-        scripts/config --file $KCONFIG -e IP6_NF_TARGET_MASQUERADE
-        scripts/config --file $KCONFIG -e NLS_UTF8
-        scripts/config --file $KCONFIG -e UNICODE
-        scripts/config --file $KCONFIG --set-str LOCALVERSION "-S928B-HMBIRD-V77"
+        # Ativando tuas ferramentas favoritas
+        ./scripts/config --file $KCONFIG -e KSU
+        ./scripts/config --file $KCONFIG -e KSU_NEXT
+        ./scripts/config --file $KCONFIG -e KSU_SUSFS
+        ./scripts/config --file $KCONFIG -e TCP_CONG_BBR
+        ./scripts/config --file $KCONFIG -e IP_SET
+        ./scripts/config --file $KCONFIG -e UNICODE
+        ./scripts/config --file $KCONFIG --set-str LOCALVERSION "-HMBIRD-V78-GKI"
         
-        # Sincronização Raiz GKI
+        # Validar KMI (Fundamental para GKI 6.6)
         make O=out ARCH=arm64 olddefconfig
 
-    - name: 🏗️ Compilação Turbo Estabilizada
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # -j2 para evitar o erro de "demasiados" processos na RAM
-        make -j2 O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1
-        
-        llvm-strip --strip-debug out/arch/arm64/boot/Image
-        xz -9 -e -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.xz
-
-    - name: 📦 AnyKernel3 (Cópia fiel XKNXT Terminator)
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://github.com/osm0sis/AnyKernel3.git
-        cp android-kernel/out/arch/arm64/boot/Image.xz AnyKernel3/Image.xz
-        
-        # Script baseado nas suas prints de 14:32 (Terminator Style)
-        cat <<EOF > AnyKernel3/anykernel.sh
-        ### AnyKernel setup
-        properties() { '
-        kernel.string=XENNET Kernels by Xennet The Terminator
-        do.devicecheck=0
-        do.modules=0
-        do.systemless=0
-        do.cleanup=1
-        '; }
-        block=boot;
-        is_slot_device=auto;
-        . tools/ak3-core.sh;
-        
-        # Lógica de detecção de Ramdisk vista nas suas fotos
-        split_boot;
-        if [ -f "split_img/ramdisk.cpio" ]; then
-            unpack_ramdisk;
-            write_boot;
-        else
-            flash_boot;
-        fi
-        EOF
-        
-        cd AnyKernel3 && zip -r ../G75-V77-HMBIRD.zip .
-
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: HMBIRD-V77-RESULT
-        path: G75-V77-HMBIRD.zip
+    - name:
